@@ -72,8 +72,6 @@ fn usage() {
     println!("  search for '!remind' statements in files and prints due reminders.");
     println!("");
     println!("Usage: {progname} FILES...");
-    println!("");
-    println!("");
 }
 
 fn parse_arguments(config: &mut Config) {
@@ -99,5 +97,10 @@ fn parse_arguments(config: &mut Config) {
         } else {
             config.files.push(arg);
         }
+    }
+
+    if config.files.is_empty() {
+        usage();
+        std::process::exit(1);
     }
 }
