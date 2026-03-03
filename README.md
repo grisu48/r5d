@@ -11,6 +11,9 @@ This utility allows to add notification and alarm clocks directly into configura
 !remind
 !remind - Reminders flagged with '-' will always fire
 # !remind 3000-01-01T00:00:00 Reminders can be in comments
+
+!noremind Stop processing reminders.
+!remind - This one will not be seen anymore.
 ```
 
 Reminders can start anywhere in a line. This allows the program to work against various configuration files, where reminders might be put as comments.

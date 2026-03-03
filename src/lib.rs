@@ -60,6 +60,11 @@ pub fn search_reminders(content: &str) -> Result<Vec<Reminder>, ResultError> {
     let mut line_counter = 0;
     for line in content.lines() {
         line_counter += 1;
+
+        if line.contains("!noremind") {
+            break;
+        }
+
         if let Some(remind) = line.find("!remind") {
             let remind = line[remind + 7..].trim();
 
@@ -146,5 +151,16 @@ mod tests {
         assert!(reminders[0].datetime.timestamp() - now < 10);
         assert!(reminders[0].reminder == "Hello World!");
         assert!(reminders[0].is_due());
+    }
+
+    #[test]
+    fn test_no_reminders() {
+        // Should find two empty reminders and ignore the rest
+        assert!(
+            search_reminders("!remind\n!remind\n!noremind\n!remind\n!remind")
+                .unwrap()
+                .len()
+                == 2
+        );
     }
 }
