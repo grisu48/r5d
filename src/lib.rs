@@ -12,7 +12,7 @@ pub enum ResultError {
 #[derive(Debug)]
 pub struct Reminder {
     pub datetime: DateTime<Utc>, // Time the reminder is set to, if present
-    pub reminder: String,        // Reminder string if present
+    pub description: String,     // Reminder string if present
     pub line: i32,               // Line number that matched
 }
 
@@ -20,7 +20,7 @@ impl Reminder {
     pub fn new() -> Reminder {
         Reminder {
             datetime: Utc::now(),
-            reminder: "".to_string(),
+            description: "".to_string(),
             line: 0,
         }
     }
@@ -65,20 +65,20 @@ pub fn search_reminders(content: &str) -> Result<Vec<Reminder>, ResultError> {
             break;
         }
 
-        if let Some(remind) = line.find("!remind") {
-            let remind = line[remind + 7..].trim();
+        if let Some(matched) = line.find("!remind") {
+            let matched = line[matched + 7..].trim();
 
             let mut reminder = Reminder::new();
             reminder.line = line_counter;
 
             // Allow empty reminders
-            if remind == "" {
+            if matched == "" {
                 reminders.push(reminder);
             } else {
-                // Parse date and note
-                let (date, note) = match remind.split_once(" ") {
-                    None => (remind, ""),
-                    Some((date, remind)) => (date, remind),
+                // Parse date and reminder description
+                let (date, description) = match matched.split_once(" ") {
+                    None => (matched, ""),
+                    Some((date, description)) => (date, description),
                 };
                 let datetime = match parse_datetime(date) {
                     Some(datetime) => datetime,
@@ -86,7 +86,7 @@ pub fn search_reminders(content: &str) -> Result<Vec<Reminder>, ResultError> {
                 };
 
                 reminder.datetime = datetime;
-                reminder.reminder = note.to_string();
+                reminder.description = description.to_string();
                 reminders.push(reminder);
             }
         }
@@ -149,7 +149,7 @@ mod tests {
         let reminders = search_reminders("123\n# !remind now Hello World!\n").unwrap();
         assert!(reminders.len() == 1);
         assert!(reminders[0].datetime.timestamp() - now < 10);
-        assert!(reminders[0].reminder == "Hello World!");
+        assert!(reminders[0].description == "Hello World!");
         assert!(reminders[0].is_due());
     }
 
