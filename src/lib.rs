@@ -1,4 +1,7 @@
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
+
+// Date formats that will be tried to be parsed in this order
+const DATE_FORMATS: [&str; 2] = ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"];
 
 #[derive(Debug)]
 pub enum ResultError {
@@ -8,15 +11,15 @@ pub enum ResultError {
 
 #[derive(Debug)]
 pub struct Reminder {
-    pub datetime: DateTime<FixedOffset>, // Time the reminder is set to, if present
-    pub reminder: String,                // Reminder string if present
-    pub line: i32,                       // Line number that matched
+    pub datetime: DateTime<Utc>, // Time the reminder is set to, if present
+    pub reminder: String,        // Reminder string if present
+    pub line: i32,               // Line number that matched
 }
 
 impl Reminder {
     pub fn new() -> Reminder {
         Reminder {
-            datetime: Utc::now().fixed_offset(),
+            datetime: Utc::now(),
             reminder: "".to_string(),
             line: 0,
         }
@@ -24,24 +27,29 @@ impl Reminder {
 
     // Checks if the given reminder is due
     pub fn is_due(&self) -> bool {
-        let now = Utc::now().fixed_offset().timestamp();
+        let now = Utc::now().timestamp();
         return self.datetime.timestamp() <= now;
     }
 }
 
 /* Attempts to parse a given datetime string by applying various matching patterns. */
-fn parse_datetime(str: &str) -> Option<DateTime<FixedOffset>> {
+fn parse_datetime(str: &str) -> Option<DateTime<Utc>> {
     // Special handles come first
     if str == "" || str == "now" || str == "_" || str == "-" {
-        return Some(Utc::now().fixed_offset());
+        return Some(Utc::now());
     }
 
-    // RFC 3339 has preference over custom date formats
+    // RFC3339 has preference over custom date formats
     if let Ok(date) = DateTime::parse_from_rfc3339(str) {
-        return Some(date);
+        return Some(date.to_utc());
     }
 
-    // TODO: Add more parsing methods
+    // Try to parse to the given date formats
+    for fmt in DATE_FORMATS {
+        if let Ok(date) = NaiveDateTime::parse_from_str(str, fmt) {
+            return Some(date.and_utc());
+        }
+    }
 
     return None;
 }
@@ -88,40 +96,46 @@ mod tests {
     #[test]
     fn test_parse_datetime() {
         // Note: For the tests we accept a difference of 10 seconds
-        let now = Utc::now().fixed_offset().timestamp();
+        let now = Utc::now();
+        let timestamp = now.timestamp();
 
-        assert!(
-            parse_datetime("")
-                .expect("parsing of empty string failed")
-                .timestamp()
-                - now
-                < 10
+        // Parse special dates
+        for str in ["now", "", "-", "_"] {
+            assert!(
+                parse_datetime(str)
+                    .expect(&format!("parsing of {str} failed"))
+                    .timestamp()
+                    - timestamp
+                    < 10
+            );
+        }
+
+        // Parse RFC3339
+        assert_eq!(
+            parse_datetime(&now.to_rfc3339()).expect("RFC3339 parsing failed"),
+            now
         );
-        assert!(
-            parse_datetime("-")
-                .expect("parsing of '-' failed")
-                .timestamp()
-                - now
-                < 10
-        );
-        assert!(
-            parse_datetime("_")
-                .expect("parsing of '-' failed")
-                .timestamp()
-                - now
-                < 10
-        );
-        assert!(
-            parse_datetime("now")
-                .expect("parsing of 'now' failed")
-                .timestamp()
-                - now
-                < 10
-        );
+        // Parse custom formats
+        for fmt in DATE_FORMATS {
+            let formatted = now.format(fmt).to_string();
+            // Note: Do not use assert_eq because it's too accurate.
+            let parsed = match parse_datetime(&formatted) {
+                Some(t) => t,
+                None => {
+                    eprintln!("Parsing of '{}' failed: None returned", formatted);
+                    assert!(false);
+                    continue;
+                }
+            };
+            let diff = parsed.timestamp() - now.timestamp();
+            assert!(diff.abs() < 1);
+        }
     }
 
     #[test]
     fn test_search_reminders() {
+        let now = Utc::now().fixed_offset().timestamp();
+
         // Should not find any reminders
         assert!(search_reminders("123").unwrap().len() == 0);
         // Should find one empty reminder
@@ -129,7 +143,7 @@ mod tests {
         // Should find one non-empty reminder
         let reminders = search_reminders("123\n# !remind now Hello World!\n").unwrap();
         assert!(reminders.len() == 1);
-        //assert!(reminders[0].datetime == "now");
+        assert!(reminders[0].datetime.timestamp() - now < 10);
         assert!(reminders[0].reminder == "Hello World!");
         assert!(reminders[0].is_due());
     }
