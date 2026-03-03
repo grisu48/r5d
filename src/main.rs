@@ -5,15 +5,26 @@ use r5d::search_reminders;
 fn main() {
     let mut args = env::args_os();
     args.next(); // Ignore program name
+    let filenames: Vec<_> = args
+        .map(|x| x.to_str().expect("argument parsing error").to_string())
+        .collect();
 
-    let mut rings = 0;
+    let mut total_matches = 0;
 
-    for file in args {
-        rings += process(file.to_str().expect("argument parsing error"));
+    for filename in filenames.clone() {
+        let matches = process(&filename);
+
+        eprintln!("{filename} - {matches} match(es)");
+
+        total_matches += matches;
+    }
+
+    if filenames.len() > 1 {
+        eprintln!("{total_matches} match(es) in {} files", filenames.len())
     }
 
     // Return with exit code 5 if we found reminders
-    if rings > 0 {
+    if total_matches > 0 {
         std::process::exit(5);
     }
 }
