@@ -32,7 +32,11 @@ fn process(filename: &str) -> i32 {
     for reminder in reminders {
         if reminder.is_due() {
             let line = reminder.line;
-            let reminder = reminder.reminder;
+            let reminder = if reminder.reminder == "" {
+                "<empty reminder>"
+            } else {
+                &reminder.reminder
+            };
             println!("{filename}:{line} {reminder}");
             rings += 1;
         }
