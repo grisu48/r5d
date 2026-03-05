@@ -1,11 +1,15 @@
-use std::{env, fs, io};
+use std::{
+    env, fs,
+    io::{self},
+};
 
 use r5d::{get_files, is_directory, search_reminders};
 
 /* Program configuration */
 struct Config {
-    paths: Vec<String>, // files and directories that should be processed
-    recursive: bool,
+    paths: Vec<String>,  // files and directories that should be processed
+    recursive: bool,     // search directories recursively
+    ignore_binary: bool, // Ignore UTF-8 encoding errors (i.e. binary files)
 }
 
 impl Config {
@@ -13,6 +17,7 @@ impl Config {
         Config {
             paths: Vec::new(),
             recursive: false,
+            ignore_binary: false,
         }
     }
 }
@@ -37,9 +42,18 @@ fn main() {
     }
 
     for filename in filenames.iter() {
-        let matches = process(&filename);
+        let matches = process(&filename, config.ignore_binary);
 
-        eprintln!("{filename} - {matches} match(es)");
+        if matches < 0 {
+            // Ignore
+            continue;
+        } else if matches == 0 {
+            eprintln!("{filename} - no matches");
+        } else if matches == 1 {
+            eprintln!("{filename} - {matches} match");
+        } else {
+            eprintln!("{filename} - {matches} matches");
+        }
 
         total_matches += matches;
     }
@@ -54,10 +68,20 @@ fn main() {
     }
 }
 
-fn process(filename: &str) -> i32 {
+fn process(filename: &str, ignore_binary: bool) -> i32 {
     let mut rings = 0;
-    let contents =
-        fs::read_to_string(filename).expect(format!("error reading file {filename}").as_str());
+    let contents = match fs::read_to_string(filename) {
+        Ok(contents) => contents,
+        Err(err) => {
+            if ignore_binary && err.kind() == io::ErrorKind::InvalidData {
+                eprintln!("{filename} is not valid UTF-8");
+                return -1;
+            } else {
+                eprintln!("error reading file {filename}");
+                std::process::exit(1);
+            }
+        }
+    };
     let reminders = match search_reminders(&contents) {
         Ok(reminders) => reminders,
         Err(err) => {
@@ -93,6 +117,7 @@ fn usage() {
     println!("OPTIONS");
     println!("  -h, --help                         Show this help message");
     println!("  -r, --recursive                    Recursive search in directories");
+    println!("  -b, --ignore-binary                Ignore UTF-8 reading error, i.e. binary files");
 }
 
 fn parse_arguments(config: &mut Config) {
@@ -111,6 +136,7 @@ fn parse_arguments(config: &mut Config) {
                     std::process::exit(0);
                 }
                 "--recursive" | "-r" => config.recursive = true,
+                "--ignore-binary" | "-b" => config.ignore_binary = true,
                 _ => {
                     eprintln!("invalid argument: {arg}");
                     std::process::exit(1);
