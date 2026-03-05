@@ -1,15 +1,19 @@
-use std::{env, fs};
+use std::{env, fs, io};
 
-use r5d::search_reminders;
+use r5d::{get_files, is_directory, search_reminders};
 
 /* Program configuration */
 struct Config {
-    files: Vec<String>, // files that should be processed
+    paths: Vec<String>, // files and directories that should be processed
+    recursive: bool,
 }
 
 impl Config {
     fn new() -> Config {
-        Config { files: Vec::new() }
+        Config {
+            paths: Vec::new(),
+            recursive: false,
+        }
     }
 }
 
@@ -18,7 +22,19 @@ fn main() {
     parse_arguments(&mut config);
 
     let mut total_matches = 0;
-    let filenames = config.files;
+    let pathnames = config.paths;
+    let mut filenames: Vec<String> = Vec::new();
+
+    for pathname in pathnames {
+        let mut files = match expand_path(&pathname, config.recursive) {
+            Ok(files) => files,
+            Err(err) => {
+                eprintln!("path expansion error for {pathname}: {err}");
+                std::process::exit(1);
+            }
+        };
+        filenames.append(&mut files);
+    }
 
     for filename in filenames.iter() {
         let matches = process(&filename);
@@ -40,7 +56,8 @@ fn main() {
 
 fn process(filename: &str) -> i32 {
     let mut rings = 0;
-    let contents = fs::read_to_string(filename).expect("error reading file");
+    let contents =
+        fs::read_to_string(filename).expect(format!("error reading file {filename}").as_str());
     let reminders = match search_reminders(&contents) {
         Ok(reminders) => reminders,
         Err(err) => {
@@ -71,7 +88,11 @@ fn usage() {
     println!("r5d - remind");
     println!("  search for '!remind' statements in files and prints due reminders.");
     println!("");
-    println!("Usage: {progname} FILES...");
+    println!("Usage: {progname} [OPTIONS] FILES...");
+    println!("");
+    println!("OPTIONS");
+    println!("  -h, --help                         Show this help message");
+    println!("  -r, --recursive                    Recursive search in directories");
 }
 
 fn parse_arguments(config: &mut Config) {
@@ -89,18 +110,30 @@ fn parse_arguments(config: &mut Config) {
                     usage();
                     std::process::exit(0);
                 }
+                "--recursive" | "-r" => config.recursive = true,
                 _ => {
                     eprintln!("invalid argument: {arg}");
                     std::process::exit(1);
                 }
             }
         } else {
-            config.files.push(arg);
+            config.paths.push(arg);
         }
     }
 
-    if config.files.is_empty() {
+    if config.paths.is_empty() {
         usage();
         std::process::exit(1);
+    }
+}
+
+/* Get filename if this is a file or the contents of the directory if it is a directory */
+fn expand_path(pathname: &str, recursive: bool) -> Result<Vec<String>, io::Error> {
+    if is_directory(pathname) {
+        return get_files(pathname, recursive);
+    } else {
+        let mut ret: Vec<String> = Vec::new();
+        ret.push(pathname.to_string());
+        return Ok(ret);
     }
 }

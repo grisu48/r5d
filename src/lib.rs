@@ -1,3 +1,8 @@
+use std::{
+    fs::{self},
+    io,
+};
+
 use chrono::{DateTime, NaiveDateTime, Utc};
 
 // Date formats that will be tried to be parsed in this order
@@ -52,6 +57,42 @@ fn parse_datetime(str: &str) -> Option<DateTime<Utc>> {
     }
 
     return None;
+}
+
+/* Lazy check if a given pathname is a directory */
+pub fn is_directory(pathname: &str) -> bool {
+    let metadata = match fs::metadata(pathname) {
+        Ok(metadata) => metadata,
+        Err(_) => {
+            return false;
+        }
+    };
+    return metadata.is_dir();
+}
+
+pub fn get_files(pathname: &str, recursive: bool) -> Result<Vec<String>, io::Error> {
+    let mut ret: Vec<String> = Vec::new();
+
+    let contents = fs::read_dir(pathname)?;
+    for entry in contents {
+        let entry = entry?;
+        let path = entry.path();
+        let fullpath = match path.to_str() {
+            Some(path) => path,
+            None => panic!("path encoding error"),
+        };
+
+        if is_directory(fullpath) {
+            if recursive {
+                let mut subcontents = get_files(fullpath, recursive)?;
+                ret.append(&mut subcontents);
+            }
+        } else {
+            ret.push(fullpath.to_string());
+        }
+    }
+
+    return Ok(ret);
 }
 
 /* Searches for reminders in the given string */
