@@ -59,6 +59,28 @@ impl Reminder {
         let now = Utc::now().timestamp();
         return self.datetime.timestamp() <= now;
     }
+
+    // Create string representation of the due date
+    pub fn due_fmt(&self) -> String {
+        let now = Utc::now();
+        let mut ret = self.datetime.format("%Y-%m-%d").to_string();
+        let diff = now - self.datetime;
+        let mut days = diff.num_days();
+        if days == 0 {
+            // Check if now
+            if (self.datetime.timestamp() - now.timestamp()).abs() < 1 {
+                ret = "now".to_string();
+            } else {
+                ret = format!("Today at {}", self.datetime.format("%H:%M:%S"));
+            }
+        } else if days > 0 {
+            ret.push_str(format!(" ({days} days ago)").as_str());
+        } else {
+            days = -days;
+            ret.push_str(format!(" (in {days} days)").as_str());
+        }
+        ret
+    }
 }
 
 /* Attempts to parse a given datetime string by applying various matching patterns. */

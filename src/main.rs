@@ -6,6 +6,7 @@ use std::{
 use r5d::{get_files, is_directory, search_reminders};
 
 const ANSI_RED: &str = "\u{001b}[31m";
+const ANSI_YELLOW: &str = "\u{001b}[33m";
 const ANSI_GREEN: &str = "\u{001b}[32m";
 const ANSI_RESET: &str = "\u{001b}[0m";
 /* Program configuration */
@@ -112,14 +113,18 @@ fn process(filename: &str, ignore_binary: bool, ignore_noremind: bool, show_all:
             if due {
                 print!("{}", ANSI_RED);
                 println!("Due@{}:{}", filename, reminder.line);
+                print!("{}", ANSI_YELLOW);
+                println!("  Due:         {}", reminder.due_fmt());
+                rings += 1;
             } else {
                 print!("{}", ANSI_GREEN);
                 println!("Pending@{}:{}", filename, reminder.line);
+                println!("  Due:         {}", reminder.due_fmt());
+                print!("{}", ANSI_RESET);
             }
-            println!("  Due:         {}", reminder.datetime.format("%Y-%m-%d"));
-            print!("  Description: {}", reminder.description);
-            println!("{}", ANSI_RESET);
-            rings += 1;
+
+            print!("{}", ANSI_RESET);
+            println!("  Description: {}", reminder.description);
         }
     }
 
