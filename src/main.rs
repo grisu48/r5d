@@ -7,9 +7,10 @@ use r5d::{get_files, is_directory, search_reminders};
 
 /* Program configuration */
 struct Config {
-    paths: Vec<String>,  // files and directories that should be processed
-    recursive: bool,     // search directories recursively
-    ignore_binary: bool, // Ignore UTF-8 encoding errors (i.e. binary files)
+    paths: Vec<String>,    // files and directories that should be processed
+    recursive: bool,       // search directories recursively
+    ignore_binary: bool,   // Ignore UTF-8 encoding errors (i.e. binary files)
+    ignore_noremind: bool, // Ignore the !noremind flag in file
 }
 
 impl Config {
@@ -18,6 +19,7 @@ impl Config {
             paths: Vec::new(),
             recursive: false,
             ignore_binary: false,
+            ignore_noremind: false,
         }
     }
 }
@@ -42,7 +44,7 @@ fn main() {
     }
 
     for filename in filenames.iter() {
-        let matches = process(&filename, config.ignore_binary);
+        let matches = process(&filename, config.ignore_binary, config.ignore_noremind);
 
         if matches < 0 {
             // Ignore
@@ -68,7 +70,7 @@ fn main() {
     }
 }
 
-fn process(filename: &str, ignore_binary: bool) -> i32 {
+fn process(filename: &str, ignore_binary: bool, ignore_noremind: bool) -> i32 {
     let mut rings = 0;
     let contents = match fs::read_to_string(filename) {
         Ok(contents) => contents,
@@ -82,7 +84,7 @@ fn process(filename: &str, ignore_binary: bool) -> i32 {
             }
         }
     };
-    let reminders = match search_reminders(&contents) {
+    let reminders = match search_reminders(&contents, ignore_noremind) {
         Ok(reminders) => reminders,
         Err(err) => {
             eprintln!("(!!) error in {filename}: {:#?}", err);
@@ -118,6 +120,9 @@ fn usage() {
     println!("  -h, --help                         Show this help message");
     println!("  -r, --recursive                    Recursive search in directories");
     println!("  -b, --ignore-binary                Ignore UTF-8 reading error, i.e. binary files");
+    println!(
+        "  -n, --ignore-noremind              Ignore the !noremind flag, i.e. always show all reminders"
+    );
 }
 
 fn parse_arguments(config: &mut Config) {
@@ -136,6 +141,7 @@ fn parse_arguments(config: &mut Config) {
                     std::process::exit(0);
                 }
                 "--recursive" | "-r" => config.recursive = true,
+                "--ignore-noremind" | "-n" => config.ignore_noremind = true,
                 "--ignore-binary" | "-b" => config.ignore_binary = true,
                 _ => {
                     eprintln!("invalid argument: {arg}");

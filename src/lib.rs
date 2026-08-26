@@ -125,13 +125,16 @@ pub fn get_files(pathname: &str, recursive: bool) -> Result<Vec<String>, io::Err
 }
 
 /* Searches for reminders in the given string */
-pub fn search_reminders(content: &str) -> Result<Vec<Reminder>, ResultError> {
+pub fn search_reminders(
+    content: &str,
+    ignore_noremind: bool,
+) -> Result<Vec<Reminder>, ResultError> {
     let mut reminders: Vec<Reminder> = Vec::new();
     let mut line_counter = 0;
     for line in content.lines() {
         line_counter += 1;
 
-        if line.contains("!noremind") {
+        if line.contains("!noremind") && !ignore_noremind {
             break;
         }
 
@@ -218,33 +221,37 @@ mod tests {
         let now = Utc::now().fixed_offset().timestamp();
 
         // Should not find any reminders
-        assert!(search_reminders("123").unwrap().len() == 0);
+        assert!(search_reminders("123", false).unwrap().len() == 0);
         // Should find one empty reminder
-        assert!(search_reminders("123\n!remind\n456").unwrap().len() == 1);
+        assert!(search_reminders("123\n!remind\n456", false).unwrap().len() == 1);
         // Should find one empty reminder
-        assert!(search_reminders("123\n!todo\n456").unwrap().len() == 1);
+        assert!(search_reminders("123\n!todo\n456", false).unwrap().len() == 1);
         // Should find one non-empty reminder
-        let reminders = search_reminders("123\n# !remind now Hello World!\n").unwrap();
+        let reminders = search_reminders("123\n# !remind now Hello World!\n", false).unwrap();
         assert!(reminders.len() == 1);
         assert!(reminders[0].datetime.timestamp() - now < 10);
         assert!(reminders[0].description == "Hello World!");
         assert!(reminders[0].is_due());
         // Check if !todo works with a date only
-        let reminders = search_reminders("123\n# !todo 2024-01-01 Happy new year!\n").unwrap();
+        let reminders =
+            search_reminders("123\n# !todo 2024-01-01 Happy new year!\n", false).unwrap();
         assert!(reminders.len() == 1);
         assert!(reminders[0].datetime.timestamp() == 1704067200);
         assert!(reminders[0].description == "Happy new year!");
         assert!(reminders[0].is_due());
         // Check if !todo works with a datetime
         let reminders =
-            search_reminders("123\n# !todo 2024-01-01T10:00:00Z Happy new year!\n").unwrap();
+            search_reminders("123\n# !todo 2024-01-01T10:00:00Z Happy new year!\n", false).unwrap();
         assert!(reminders.len() == 1);
         assert!(reminders[0].datetime.timestamp() == 1704103200);
         assert!(reminders[0].description == "Happy new year!");
         assert!(reminders[0].is_due());
         // Check if !remind works with a datetime
-        let reminders =
-            search_reminders("123\n# !remind 2150-12-31T23:59:59Z Happy new year!\n").unwrap();
+        let reminders = search_reminders(
+            "123\n# !remind 2150-12-31T23:59:59Z Happy new year!\n",
+            false,
+        )
+        .unwrap();
         assert!(reminders.len() == 1);
         assert!(reminders[0].datetime.timestamp() == 5711817599);
         assert!(reminders[0].description == "Happy new year!");
@@ -255,17 +262,25 @@ mod tests {
     fn test_no_reminders() {
         // Should find two empty reminders and ignore the rest
         assert!(
-            search_reminders("!remind\n!remind\n!noremind\n!remind\n!remind")
+            search_reminders("!remind\n!remind\n!noremind\n!remind\n!remind", false)
                 .unwrap()
                 .len()
                 == 2
         );
         // Same but with todo
         assert!(
-            search_reminders("!todo\n!todo\n!noremind\n!todo\n!todo")
+            search_reminders("!todo\n!todo\n!noremind\n!todo\n!todo", false)
                 .unwrap()
                 .len()
                 == 2
+        );
+
+        // test the ignore_noremind
+        assert!(
+            search_reminders("!todo\n!todo\n!noremind\n!todo\n!todo", true)
+                .unwrap()
+                .len()
+                == 4
         );
     }
 }
