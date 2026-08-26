@@ -5,12 +5,13 @@ Customizable reminders in configuration (and other) files.
 `r5d` will search for `!remind` statements in configuration files and fire a reminder when a defined time has passed.
 This utility allows to add notification and alarm clocks directly into configuration files.
 
-`!remind` statements look like the following:
+`!remind` or `!todo` statements look like the following:
 
 ```
 !remind
 !remind - Reminders flagged with '-' will always fire
 # !remind 3000-01-01T00:00:00 Reminders can be in comments
+!todo 2024-12-23 Buy christmas present (final reminder!)
 
 !noremind Stop processing reminders.
 !remind - This one will not be seen anymore.

@@ -3,10 +3,11 @@ use std::{
     io,
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
 // Date formats that will be tried to be parsed in this order
-const DATE_FORMATS: [&str; 2] = ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"];
+const DATETIME_FORMATS: [&str; 2] = ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"];
+const DATE_FORMATS: [&str; 1] = ["%Y-%m-%d"];
 
 #[derive(Debug)]
 pub enum ResultError {
@@ -30,6 +31,29 @@ impl Reminder {
         }
     }
 
+    // Parse the given string value and return a reminder if valid
+    fn create(value: &str) -> Result<Reminder, ResultError> {
+        let mut reminder = Reminder::new();
+        // Allow empty reminders
+        if value.is_empty() {
+            return Ok(reminder);
+        }
+
+        // Parse date and reminder description
+        let (date, description) = match value.split_once(" ") {
+            None => (value, ""),
+            Some((date, description)) => (date, description),
+        };
+        let datetime = match parse_datetime(date) {
+            Some(datetime) => datetime,
+            None => return Err(ResultError::DateformatError),
+        };
+
+        reminder.datetime = datetime;
+        reminder.description = description.to_string();
+        Ok(reminder)
+    }
+
     // Checks if the given reminder is due
     pub fn is_due(&self) -> bool {
         let now = Utc::now().timestamp();
@@ -49,10 +73,15 @@ fn parse_datetime(str: &str) -> Option<DateTime<Utc>> {
         return Some(date.to_utc());
     }
 
-    // Try to parse to the given date formats
-    for fmt in DATE_FORMATS {
+    // Try to parse to the given datetime and only date formats
+    for fmt in DATETIME_FORMATS {
         if let Ok(date) = NaiveDateTime::parse_from_str(str, fmt) {
             return Some(date.and_utc());
+        }
+    }
+    for fmt in DATE_FORMATS {
+        if let Ok(date) = NaiveDate::parse_from_str(str, fmt) {
+            return Some(date.and_hms_opt(0, 0, 0).unwrap().and_utc());
         }
     }
 
@@ -109,27 +138,25 @@ pub fn search_reminders(content: &str) -> Result<Vec<Reminder>, ResultError> {
         if let Some(matched) = line.find("!remind") {
             let matched = line[matched + 7..].trim();
 
-            let mut reminder = Reminder::new();
+            let mut reminder = match Reminder::create(matched) {
+                Ok(reminder) => reminder,
+                Err(err) => {
+                    return Err(err);
+                }
+            };
             reminder.line = line_counter;
+            reminders.push(reminder);
+        } else if let Some(matched) = line.find("!todo") {
+            let matched = line[matched + 5..].trim();
 
-            // Allow empty reminders
-            if matched == "" {
-                reminders.push(reminder);
-            } else {
-                // Parse date and reminder description
-                let (date, description) = match matched.split_once(" ") {
-                    None => (matched, ""),
-                    Some((date, description)) => (date, description),
-                };
-                let datetime = match parse_datetime(date) {
-                    Some(datetime) => datetime,
-                    None => return Err(ResultError::DateformatError),
-                };
-
-                reminder.datetime = datetime;
-                reminder.description = description.to_string();
-                reminders.push(reminder);
-            }
+            let mut reminder = match Reminder::create(matched) {
+                Ok(reminder) => reminder,
+                Err(err) => {
+                    return Err(err);
+                }
+            };
+            reminder.line = line_counter;
+            reminders.push(reminder);
         }
     }
     Ok(reminders)
@@ -141,9 +168,9 @@ mod tests {
 
     #[test]
     fn test_parse_datetime() {
-        // Note: For the tests we accept a difference of 10 seconds
+        // Note: For the tests we accept a difference of 10 seconds.
+        // Because we also parse only dates, we need to set the timestamp to midnight
         let now = Utc::now();
-        let timestamp = now.timestamp();
 
         // Parse special dates
         for str in ["now", "", "-", "_"] {
@@ -151,7 +178,7 @@ mod tests {
                 parse_datetime(str)
                     .expect(&format!("parsing of {str} failed"))
                     .timestamp()
-                    - timestamp
+                    - now.timestamp()
                     < 10
             );
         }
@@ -161,9 +188,14 @@ mod tests {
             parse_datetime(&now.to_rfc3339()).expect("RFC3339 parsing failed"),
             now
         );
+
         // Parse custom formats
-        for fmt in DATE_FORMATS {
+        let mut formats = Vec::new();
+        formats.extend_from_slice(&DATE_FORMATS);
+        formats.extend_from_slice(&DATETIME_FORMATS);
+        for fmt in formats {
             let formatted = now.format(fmt).to_string();
+
             // Note: Do not use assert_eq because it's too accurate.
             let parsed = match parse_datetime(&formatted) {
                 Some(t) => t,
@@ -173,8 +205,11 @@ mod tests {
                     continue;
                 }
             };
-            let diff = parsed.timestamp() - now.timestamp();
-            assert!(diff.abs() < 1);
+            assert_eq!(
+                formatted,
+                parsed.format(fmt).to_string(),
+                "parsed date doesn't match input date"
+            );
         }
     }
 
@@ -186,12 +221,34 @@ mod tests {
         assert!(search_reminders("123").unwrap().len() == 0);
         // Should find one empty reminder
         assert!(search_reminders("123\n!remind\n456").unwrap().len() == 1);
+        // Should find one empty reminder
+        assert!(search_reminders("123\n!todo\n456").unwrap().len() == 1);
         // Should find one non-empty reminder
         let reminders = search_reminders("123\n# !remind now Hello World!\n").unwrap();
         assert!(reminders.len() == 1);
         assert!(reminders[0].datetime.timestamp() - now < 10);
         assert!(reminders[0].description == "Hello World!");
         assert!(reminders[0].is_due());
+        // Check if !todo works with a date only
+        let reminders = search_reminders("123\n# !todo 2024-01-01 Happy new year!\n").unwrap();
+        assert!(reminders.len() == 1);
+        assert!(reminders[0].datetime.timestamp() == 1704067200);
+        assert!(reminders[0].description == "Happy new year!");
+        assert!(reminders[0].is_due());
+        // Check if !todo works with a datetime
+        let reminders =
+            search_reminders("123\n# !todo 2024-01-01T10:00:00Z Happy new year!\n").unwrap();
+        assert!(reminders.len() == 1);
+        assert!(reminders[0].datetime.timestamp() == 1704103200);
+        assert!(reminders[0].description == "Happy new year!");
+        assert!(reminders[0].is_due());
+        // Check if !remind works with a datetime
+        let reminders =
+            search_reminders("123\n# !remind 2150-12-31T23:59:59Z Happy new year!\n").unwrap();
+        assert!(reminders.len() == 1);
+        assert!(reminders[0].datetime.timestamp() == 5711817599);
+        assert!(reminders[0].description == "Happy new year!");
+        assert!(!reminders[0].is_due()); // if you see this failing in 2150 then I hope humankind is doing fine and we have reached for the stars :-)
     }
 
     #[test]
@@ -199,6 +256,13 @@ mod tests {
         // Should find two empty reminders and ignore the rest
         assert!(
             search_reminders("!remind\n!remind\n!noremind\n!remind\n!remind")
+                .unwrap()
+                .len()
+                == 2
+        );
+        // Same but with todo
+        assert!(
+            search_reminders("!todo\n!todo\n!noremind\n!todo\n!todo")
                 .unwrap()
                 .len()
                 == 2
