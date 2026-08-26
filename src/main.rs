@@ -5,12 +5,16 @@ use std::{
 
 use r5d::{get_files, is_directory, search_reminders};
 
+const ANSI_RED: &str = "\u{001b}[31m";
+const ANSI_GREEN: &str = "\u{001b}[32m";
+const ANSI_RESET: &str = "\u{001b}[0m";
 /* Program configuration */
 struct Config {
     paths: Vec<String>,    // files and directories that should be processed
     recursive: bool,       // search directories recursively
     ignore_binary: bool,   // Ignore UTF-8 encoding errors (i.e. binary files)
     ignore_noremind: bool, // Ignore the !noremind flag in file
+    show_all: bool,        // Show all reminders
 }
 
 impl Config {
@@ -20,6 +24,7 @@ impl Config {
             recursive: false,
             ignore_binary: false,
             ignore_noremind: false,
+            show_all: false,
         }
     }
 }
@@ -28,7 +33,7 @@ fn main() {
     let mut config = Config::new();
     parse_arguments(&mut config);
 
-    let mut total_matches = 0;
+    let mut total_dues = 0;
     let pathnames = config.paths;
     let mut filenames: Vec<String> = Vec::new();
 
@@ -44,33 +49,42 @@ fn main() {
     }
 
     for filename in filenames.iter() {
-        let matches = process(&filename, config.ignore_binary, config.ignore_noremind);
+        let dues = process(
+            &filename,
+            config.ignore_binary,
+            config.ignore_noremind,
+            config.show_all,
+        );
 
-        if matches < 0 {
+        if dues < 0 {
             // Ignore
             continue;
-        } else if matches == 0 {
-            eprintln!("{filename} - no matches");
-        } else if matches == 1 {
-            eprintln!("{filename} - {matches} match");
+        } else if dues == 0 {
+            eprintln!("{filename} - no due reminders");
+        } else if dues == 1 {
+            eprintln!("{filename} - one due reminder");
         } else {
-            eprintln!("{filename} - {matches} matches");
+            eprintln!("{filename} - {dues} due reminders");
         }
 
-        total_matches += matches;
+        total_dues += dues;
     }
 
     if filenames.len() > 1 {
-        eprintln!("{total_matches} match(es) in {} files", filenames.len())
+        if total_dues == 1 {
+            eprintln!("One due reminder in {} files", filenames.len())
+        } else {
+            eprintln!("{total_dues} due reminders in {} files", filenames.len())
+        }
     }
 
     // Return with exit code 5 if we found reminders
-    if total_matches > 0 {
+    if total_dues > 0 {
         std::process::exit(5);
     }
 }
 
-fn process(filename: &str, ignore_binary: bool, ignore_noremind: bool) -> i32 {
+fn process(filename: &str, ignore_binary: bool, ignore_noremind: bool, show_all: bool) -> i32 {
     let mut rings = 0;
     let contents = match fs::read_to_string(filename) {
         Ok(contents) => contents,
@@ -93,14 +107,18 @@ fn process(filename: &str, ignore_binary: bool, ignore_noremind: bool) -> i32 {
     };
 
     for reminder in reminders {
-        if reminder.is_due() {
-            let line = reminder.line;
-            let reminder = if reminder.description == "" {
-                "<empty reminder>"
+        let due = reminder.is_due();
+        if show_all || due {
+            if due {
+                print!("{}", ANSI_RED);
+                println!("Due@{}:{}", filename, reminder.line);
             } else {
-                &reminder.description
-            };
-            println!("{filename}:{line} {reminder}");
+                print!("{}", ANSI_GREEN);
+                println!("Pending@{}:{}", filename, reminder.line);
+            }
+            println!("  Due:         {}", reminder.datetime.format("%Y-%m-%d"));
+            print!("  Description: {}", reminder.description);
+            println!("{}", ANSI_RESET);
             rings += 1;
         }
     }
@@ -119,6 +137,7 @@ fn usage() {
     println!("OPTIONS");
     println!("  -h, --help                         Show this help message");
     println!("  -r, --recursive                    Recursive search in directories");
+    println!("  -a, --all                          Show all reminders");
     println!("  -b, --ignore-binary                Ignore UTF-8 reading error, i.e. binary files");
     println!(
         "  -n, --ignore-noremind              Ignore the !noremind flag, i.e. always show all reminders"
@@ -141,6 +160,7 @@ fn parse_arguments(config: &mut Config) {
                     std::process::exit(0);
                 }
                 "--recursive" | "-r" => config.recursive = true,
+                "all" | "-a" => config.show_all = true,
                 "--ignore-noremind" | "-n" => config.ignore_noremind = true,
                 "--ignore-binary" | "-b" => config.ignore_binary = true,
                 _ => {
