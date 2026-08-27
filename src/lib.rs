@@ -9,16 +9,30 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 const DATETIME_FORMATS: [&str; 2] = ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"];
 const DATE_FORMATS: [&str; 1] = ["%Y-%m-%d"];
 
+const ANSI_RED: &str = "\u{001b}[31m";
+const ANSI_YELLOW: &str = "\u{001b}[33m";
+const ANSI_GREEN: &str = "\u{001b}[32m";
+const ANSI_WHITE: &str = "\u{001b}[37m";
+const ANSI_RESET: &str = "\u{001b}[0m";
+
 #[derive(Debug)]
 pub enum ResultError {
     SyntaxError,
     DateformatError,
+    IOError(io::Error),
+}
+
+impl From<io::Error> for ResultError {
+    fn from(err: io::Error) -> Self {
+        ResultError::IOError(err)
+    }
 }
 
 #[derive(Debug)]
 pub struct Reminder {
     pub datetime: DateTime<Utc>, // Time the reminder is set to, if present
     pub description: String,     // Reminder string if present
+    pub filename: String,        // File containing the reminder
     pub line: i32,               // Line number that matched
 }
 
@@ -27,6 +41,7 @@ impl Reminder {
         Reminder {
             datetime: Utc::now(),
             description: "".to_string(),
+            filename: "".to_string(),
             line: 0,
         }
     }
@@ -81,6 +96,20 @@ impl Reminder {
         }
         ret
     }
+
+    pub fn print(&self) {
+        if self.is_due() {
+            print!("{}", ANSI_RED);
+            print!("Due:{}:{}", self.filename, self.line);
+            print!(" {}{}", ANSI_YELLOW, self.due_fmt());
+        } else {
+            print!("{}", ANSI_GREEN);
+            print!("Ok:{}:{}", self.filename, self.line);
+            print!(" {}{}", ANSI_WHITE, self.due_fmt());
+        }
+        println!("{}", ANSI_RESET);
+        println!("  {}", self.description);
+    }
 }
 
 /* Attempts to parse a given datetime string by applying various matching patterns. */
@@ -110,7 +139,7 @@ fn parse_datetime(str: &str) -> Option<DateTime<Utc>> {
     return None;
 }
 
-/* Lazy check if a given pathname is a directory */
+/* Check if a given pathname is a directory */
 pub fn is_directory(pathname: &str) -> bool {
     let metadata = match fs::metadata(pathname) {
         Ok(metadata) => metadata,
@@ -121,6 +150,7 @@ pub fn is_directory(pathname: &str) -> bool {
     return metadata.is_dir();
 }
 
+// Get all files from a given path.
 pub fn get_files(pathname: &str, recursive: bool) -> Result<Vec<String>, io::Error> {
     let mut ret: Vec<String> = Vec::new();
 
@@ -130,7 +160,12 @@ pub fn get_files(pathname: &str, recursive: bool) -> Result<Vec<String>, io::Err
         let path = entry.path();
         let fullpath = match path.to_str() {
             Some(path) => path,
-            None => panic!("path encoding error"),
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Path encoding error",
+                ));
+            }
         };
 
         if is_directory(fullpath) {
@@ -144,6 +179,19 @@ pub fn get_files(pathname: &str, recursive: bool) -> Result<Vec<String>, io::Err
     }
 
     return Ok(ret);
+}
+
+/* Searches for reminders in the given file */
+pub fn file_search_reminders(
+    filename: &str,
+    ignore_noremind: bool,
+) -> Result<Vec<Reminder>, ResultError> {
+    let contents = fs::read_to_string(filename)?;
+    let mut reminders = search_reminders(&contents, ignore_noremind)?;
+    for reminder in reminders.iter_mut() {
+        reminder.filename = filename.to_string();
+    }
+    Ok(reminders)
 }
 
 /* Searches for reminders in the given string */
