@@ -9,8 +9,8 @@ show a reminder when a defined time has passed.
 This utility allows to add notification and alarm clocks directly into
 configuration and other text files.
 
-When at least one reminder is found, the program will report it and exit with
-code `5`.
+When at least one reminder is due, the program will report it and exit with 
+the error code `5`.
 
 ## Example
 
