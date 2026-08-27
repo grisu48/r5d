@@ -14,7 +14,7 @@ code `5`.
 
 ## Example
 
-See the following snippet or [example.conf](_example/example.conf) for a more
+See the following snippet or [example.conf](_examples/example.conf) for a more
 detailed example file.
 
 ```ini
